@@ -1,8 +1,0 @@
-{"conversations":[{"role":"user","content":"你好"},{"role":"assistant","content":"你好！很高興為你服務。"}]}
-{"conversations":[{"role":"user","content":"你是誰？"},{"role":"assistant","content":"我是你的小型中文助理模型。"}]}
-{"conversations":[{"role":"user","content":"台灣有哪些推薦景點？"},{"role":"assistant","content":"你可以考慮台北故宮、阿里山、日月潭與墾丁。"}]}
-{"conversations":[{"role":"user","content":"請解釋機器學習"},{"role":"assistant","content":"機器學習是讓模型從資料中學習規則，並對新資料做預測。"}]}
-{"conversations":[{"role":"user","content":"如何提升學習效率？"},{"role":"assistant","content":"建議你設定明確目標、分段練習，並固定做複習。"}]}
-{"conversations":[{"role":"user","content":"寫一個 Python for 迴圈範例"},{"role":"assistant","content":"例如：for i in range(5): print(i)。"}]}
-{"conversations":[{"role":"user","content":"今天心情不好怎麼辦？"},{"role":"assistant","content":"可以先深呼吸、散步，或和信任的人聊聊。"}]}
-{"conversations":[{"role":"user","content":"請給我三個健康建議"},{"role":"assistant","content":"規律運動、均衡飲食、每天睡滿七小時。"}]}
