@@ -59,13 +59,30 @@ set "LR_SFT=2e-5"
 set "NUM_WORKERS=2"
 
 REM -------- Quick test --------
-set "USE_EXISTING_DATASET=0"
-set "ENABLE_SFT_CLEAN=1"
+if not defined USE_EXISTING_DATASET set "USE_EXISTING_DATASET=0"
+if not defined ENABLE_SFT_CLEAN set "ENABLE_SFT_CLEAN=1"
+if not defined REBUILD_DATASET set "REBUILD_DATASET=1"
+if not defined SAFE_MODE set "SAFE_MODE=1"
+if not defined MULTI_GPU set "MULTI_GPU=0"
+if not defined GPU_IDS set "GPU_IDS=0"
+if not defined NUM_GPUS set "NUM_GPUS=1"
 
 REM -------- Runtime env --------
 set "TRANSFORMERS_NO_TF=1"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUNBUFFERED=1"
+set "CUDA_VISIBLE_DEVICES=%GPU_IDS%"
+
+REM -------- Safety profile (recommended when NaN appears) --------
+if "%SAFE_MODE%"=="1" (
+  set "DTYPE=float32"
+  set "LR_PRETRAIN=1e-4"
+  set "LR_SFT=8e-6"
+  set "MAX_SEQ_LEN_PRE=96"
+  set "MAX_SEQ_LEN_SFT=128"
+  set "ACC_STEPS=32"
+  set "NUM_WORKERS=0"
+)
 
 echo.
 echo [INFO] PROJECT_DIR = %PROJECT_DIR%
@@ -98,15 +115,37 @@ if errorlevel 1 (
 
 for /f "delims=" %%i in ('python -c "import torch; print('cuda' if torch.cuda.is_available() else 'cpu')"') do set "DEVICE=%%i"
 if not defined DEVICE set "DEVICE=cpu"
-if "%DEVICE%"=="cpu" (set "DTYPE=float32") else (set "DTYPE=float16")
+if not defined DTYPE (
+  if "%DEVICE%"=="cpu" (set "DTYPE=float32") else (set "DTYPE=float16")
+)
+set "TRAIN_LAUNCH=python"
+if "%MULTI_GPU%"=="1" if "%DEVICE%"=="cuda" (
+  set "TRAIN_LAUNCH=python -m torch.distributed.run --nproc_per_node=%NUM_GPUS%"
+)
 echo [INFO] Using device: %DEVICE%, dtype: %DTYPE%
+echo [INFO] SAFE_MODE=%SAFE_MODE% REBUILD_DATASET=%REBUILD_DATASET%
+echo [INFO] MULTI_GPU=%MULTI_GPU% GPU_IDS=%GPU_IDS% NUM_GPUS=%NUM_GPUS%
 
 echo.
 echo [STEP 1/5] Build datasets from books...
+if "%REBUILD_DATASET%"=="0" (
+  set "USE_EXISTING_DATASET=1"
+)
 if "%USE_EXISTING_DATASET%"=="1" (
-  echo [INFO] USE_EXISTING_DATASET=1, using dataset\pretrain_hq.jsonl and dataset\sft_mini_512.jsonl
-  set "PRETRAIN_JSON=dataset\pretrain_hq.jsonl"
-  set "SFT_JSON=dataset\sft_mini_512.jsonl"
+  echo [INFO] USE_EXISTING_DATASET=1, reusing existing generated dataset files
+  if exist "%SFT_CLEAN_JSON%" (
+    set "SFT_JSON=%SFT_CLEAN_JSON%"
+  )
+  if not exist "%PRETRAIN_JSON%" (
+    echo [ERROR] Missing pretrain dataset: %PRETRAIN_JSON%
+    popd
+    exit /b 1
+  )
+  if not exist "%SFT_JSON%" (
+    echo [ERROR] Missing SFT dataset: %SFT_JSON%
+    popd
+    exit /b 1
+  )
 ) else (
   set "BUILD_APPEND_FLAG="
   if "%BUILD_APPEND%"=="1" (
@@ -155,7 +194,7 @@ if "%USE_EXISTING_DATASET%"=="1" (
 echo.
 echo [STEP 2/5] Pretrain...
 pushd trainer
-python train_pretrain.py ^
+%TRAIN_LAUNCH% train_pretrain.py ^
   --epochs %EPOCHS_PRETRAIN% ^
   --batch_size %BATCH_SIZE% ^
   --learning_rate %LR_PRETRAIN% ^
@@ -180,7 +219,7 @@ if errorlevel 1 (
 
 echo.
 echo [STEP 3/5] Full SFT...
-python train_full_sft.py ^
+%TRAIN_LAUNCH% train_full_sft.py ^
   --epochs %EPOCHS_SFT% ^
   --batch_size %BATCH_SIZE% ^
   --learning_rate %LR_SFT% ^
