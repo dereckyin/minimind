@@ -5,6 +5,7 @@ import os
 import random
 import re
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Callable, Iterable, List, Tuple
@@ -13,7 +14,6 @@ from bs4 import BeautifulSoup
 from ebooklib import ITEM_DOCUMENT, epub
 from pypdf import PdfReader
 from pypdf.errors import LimitReachedError
-from transformers import AutoTokenizer
 try:
     import fitz  # type: ignore[import-not-found]  # PyMuPDF
 except Exception:
@@ -244,11 +244,14 @@ def _extract_book_text_worker(
     path_str: str,
     pdf_max_pages: int,
     pdf_max_seconds: float,
+    out_text_path: str,
     out_queue: "mp.Queue",
 ) -> None:
     try:
         text = extract_book_text(Path(path_str), pdf_max_pages=pdf_max_pages, pdf_max_seconds=pdf_max_seconds)
-        out_queue.put({"ok": True, "text": text})
+        with open(out_text_path, "w", encoding="utf-8") as wf:
+            wf.write(text)
+        out_queue.put({"ok": True})
     except Exception as ex:
         out_queue.put({"ok": False, "error": str(ex)})
 
@@ -272,25 +275,39 @@ def extract_book_text_with_timeout(
 
     ctx = mp.get_context("spawn")
     out_queue: "mp.Queue" = ctx.Queue()
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+    tmp_path = tmp_file.name
+    tmp_file.close()
     proc = ctx.Process(
         target=_extract_book_text_worker,
-        args=(str(path), pdf_max_pages, pdf_max_seconds, out_queue),
+        args=(str(path), pdf_max_pages, pdf_max_seconds, tmp_path, out_queue),
     )
-    proc.start()
-    proc.join(book_timeout_seconds)
-    if proc.is_alive():
-        proc.terminate()
-        proc.join()
-        return "", "timeout"
-
     try:
-        msg = out_queue.get_nowait()
-    except Exception:
-        return "", "error"
+        proc.start()
+        proc.join(book_timeout_seconds)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join()
+            return "", "timeout"
 
-    if not msg.get("ok", False):
-        return "", "error"
-    return msg.get("text", ""), "ok"
+        try:
+            msg = out_queue.get_nowait()
+        except Exception:
+            return "", "error"
+
+        if not msg.get("ok", False):
+            return "", "error"
+        try:
+            with open(tmp_path, "r", encoding="utf-8") as rf:
+                return rf.read(), "ok"
+        except Exception:
+            return "", "error"
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
 
 
 def build_sft_seed_samples(
@@ -413,6 +430,7 @@ def main() -> None:
 
     tokenizer = None
     if args.pretrain_max_tokens > 0 or args.sft_context_max_tokens > 0 or args.sft_answer_max_tokens > 0:
+        from transformers import AutoTokenizer
         print(f"[info] Loading tokenizer from: {args.tokenizer_path}", flush=True)
         tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
         print(
@@ -532,7 +550,8 @@ def main() -> None:
                     )
 
             n = i + 1
-            show_progress = n <= 5 or n % args.log_interval == 0 or n == len(books)
+            # show_progress = n <= 5 or n % args.log_interval == 0 or n == len(books)
+            show_progress = True
             if show_progress:
                 elapsed = time.time() - start_time
                 rate = n / elapsed if elapsed > 0 else 0
