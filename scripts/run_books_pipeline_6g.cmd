@@ -34,10 +34,16 @@ set "MAX_CHARS=1200"
 set "MIN_CHARS=200"
 set "PAIRS_PER_BOOK=24"
 set "MAX_ANSWER_CHARS=320"
+set "TOKENIZER_PATH=model"
+set "PRETRAIN_MAX_TOKENS=0"
+set "SFT_CONTEXT_MAX_TOKENS=0"
+set "SFT_ANSWER_MAX_TOKENS=0"
+set "ZH_SCRIPT=t2s"
 set "MAX_BOOKS=5000"
 set "EARLY_STOP_SCAN=1"
 set "PDF_MAX_PAGES=50"
 set "PDF_MAX_SECONDS=12"
+set "BOOK_TIMEOUT_SECONDS=30"
 set "BUILD_START_INDEX=0"
 set "BUILD_END_INDEX=-1"
 set "BUILD_APPEND=0"
@@ -80,6 +86,10 @@ if "%SAFE_MODE%"=="1" (
   set "LR_SFT=8e-6"
   set "MAX_SEQ_LEN_PRE=96"
   set "MAX_SEQ_LEN_SFT=128"
+  set "MAX_ANSWER_CHARS=120"
+  set "PRETRAIN_MAX_TOKENS=94"
+  set "SFT_CONTEXT_MAX_TOKENS=48"
+  set "SFT_ANSWER_MAX_TOKENS=36"
   set "ACC_STEPS=32"
   set "NUM_WORKERS=0"
 )
@@ -169,7 +179,13 @@ if "%USE_EXISTING_DATASET%"=="1" (
     --search_depth %SEARCH_DEPTH% ^
     --pdf_max_pages %PDF_MAX_PAGES% ^
     --pdf_max_seconds %PDF_MAX_SECONDS% ^
-    --early_stop_scan %EARLY_STOP_SCAN% !BUILD_APPEND_FLAG!
+    --book_timeout_seconds %BOOK_TIMEOUT_SECONDS% ^
+    --early_stop_scan %EARLY_STOP_SCAN% ^
+    --tokenizer_path "%TOKENIZER_PATH%" ^
+    --pretrain_max_tokens %PRETRAIN_MAX_TOKENS% ^
+    --sft_context_max_tokens %SFT_CONTEXT_MAX_TOKENS% ^
+    --sft_answer_max_tokens %SFT_ANSWER_MAX_TOKENS% ^
+    --zh_script %ZH_SCRIPT% !BUILD_APPEND_FLAG!
   if errorlevel 1 (
     echo [ERROR] Dataset build failed.
     popd
