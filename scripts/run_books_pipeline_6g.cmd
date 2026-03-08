@@ -27,6 +27,8 @@ set "PRETRAIN_JSON=dataset\books_pretrain_%RUN_TAG%.jsonl"
 set "SFT_JSON=dataset\books_sft_seed_%RUN_TAG%.jsonl"
 set "SFT_CLEAN_JSON=dataset\books_sft_clean_%RUN_TAG%.jsonl"
 set "SFT_CLEAN_REPORT=dataset\books_sft_clean_report_%RUN_TAG%.json"
+set "SFT_MIX_JSON=dataset\sft_mix_%RUN_TAG%.jsonl"
+set "SFT_MIX_REPORT=dataset\sft_mix_report_%RUN_TAG%.json"
 set "REPORT_JSON=dataset\books_build_report_%RUN_TAG%.json"
 
 REM -------- Build dataset params --------
@@ -50,6 +52,11 @@ set "BUILD_APPEND=0"
 set "REPORT_PER_BOOK=0"
 set "LOG_INTERVAL=100"
 set "SEARCH_DEPTH=1"
+set "ENABLE_SFT_MIX=1"
+set "GENERAL_SFT_JSON=dataset\sft_mini_512.jsonl"
+set "BOOKS_RATIO=0.7"
+set "MIX_MAX_SAMPLES=60000"
+set "MIX_DEDUP_MODE=user_assistant"
 
 REM -------- 6GB training profile --------
 set "HIDDEN_SIZE=192"
@@ -84,12 +91,12 @@ if "%SAFE_MODE%"=="1" (
   set "DTYPE=float32"
   set "LR_PRETRAIN=1e-4"
   set "LR_SFT=8e-6"
-  set "MAX_SEQ_LEN_PRE=96"
-  set "MAX_SEQ_LEN_SFT=128"
-  set "MAX_ANSWER_CHARS=120"
-  set "PRETRAIN_MAX_TOKENS=94"
-  set "SFT_CONTEXT_MAX_TOKENS=48"
-  set "SFT_ANSWER_MAX_TOKENS=36"
+  set "MAX_SEQ_LEN_PRE=128"
+  set "MAX_SEQ_LEN_SFT=192"
+  set "MAX_ANSWER_CHARS=180"
+  set "PRETRAIN_MAX_TOKENS=126"
+  set "SFT_CONTEXT_MAX_TOKENS=96"
+  set "SFT_ANSWER_MAX_TOKENS=72"
   set "ACC_STEPS=32"
   set "NUM_WORKERS=0"
 )
@@ -205,6 +212,36 @@ if "%USE_EXISTING_DATASET%"=="1" (
     )
     set "SFT_JSON=%SFT_CLEAN_JSON%"
   )
+)
+
+if "%ENABLE_SFT_MIX%"=="1" (
+  echo.
+  echo [STEP 1.6/5] Mix books SFT with general SFT...
+  if not exist "%SFT_JSON%" (
+    echo [ERROR] Missing books SFT dataset for mixing: %SFT_JSON%
+    popd
+    exit /b 1
+  )
+  if not exist "%GENERAL_SFT_JSON%" (
+    echo [ERROR] Missing general SFT dataset: %GENERAL_SFT_JSON%
+    popd
+    exit /b 1
+  )
+  python scripts\mix_sft_datasets.py ^
+    --books_sft "%SFT_JSON%" ^
+    --general_sft "%GENERAL_SFT_JSON%" ^
+    --output "%SFT_MIX_JSON%" ^
+    --report "%SFT_MIX_REPORT%" ^
+    --books_ratio %BOOKS_RATIO% ^
+    --max_samples %MIX_MAX_SAMPLES% ^
+    --dedup_mode %MIX_DEDUP_MODE% ^
+    --seed 2026
+  if errorlevel 1 (
+    echo [ERROR] SFT mix step failed.
+    popd
+    exit /b 1
+  )
+  set "SFT_JSON=%SFT_MIX_JSON%"
 )
 
 echo.

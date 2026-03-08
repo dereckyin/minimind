@@ -320,18 +320,26 @@ def build_sft_seed_samples(
 ) -> List[dict]:
     templates = [
         "請根據以下內容整理重點：\n{context}",
-        "請用簡短方式說明這段內容：\n{context}",
-        "這段文字主要在講什麼？\n{context}",
+        "請用自己的話解釋這段內容：\n{context}",
+        "這段文字主要在講什麼？請簡要說明。\n{context}",
+        "請列出這段內容的三個關鍵觀點。\n{context}",
+        "如果你要教初學者，會怎麼介紹這段內容？\n{context}",
+        "請從這段內容中整理出可執行的建議。\n{context}",
+        "請說明這段內容可能的適用情境。\n{context}",
+        "請把這段內容改寫成更自然、口語一點的回答。\n{context}",
+        "請先指出核心結論，再補充兩個原因。\n{context}",
+        "請基於這段內容回答：讀者最該記住的是什麼？\n{context}",
     ]
     out = []
     if not chunks:
         return out
     step = max(1, len(chunks) // pairs_per_book)
     selected = [chunks[i] for i in range(0, len(chunks), step)][:pairs_per_book]
+    offset = len(chunks) % len(templates)
     for i, chunk in enumerate(selected):
         context = truncate_text_by_tokens(chunk, tokenizer, sft_context_max_tokens) if sft_context_max_tokens > 0 else chunk[: max_answer_chars * 2]
         assistant_answer = truncate_text_by_tokens(chunk, tokenizer, sft_answer_max_tokens) if sft_answer_max_tokens > 0 else chunk[:max_answer_chars]
-        user_prompt = templates[i % len(templates)].format(context=context)
+        user_prompt = templates[(i + offset) % len(templates)].format(context=context)
         out.append(
             {
                 "conversations": [

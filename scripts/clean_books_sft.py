@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -49,17 +50,22 @@ def build_answer_from_context(prompt: str, context: str, max_chars: int) -> str:
     if not picks:
         picks = sents[:3]
 
-    if "整理重點" in prompt:
+    if "整理重點" in prompt or "關鍵觀點" in prompt:
         lines = []
         for i, p in enumerate(picks[:3], 1):
             lines.append(f"{i}. {p}")
-        ans = "重點整理：\n" + "\n".join(lines)
-    elif "簡短方式" in prompt:
+        ans = "\n".join(lines)
+    elif "簡短方式" in prompt or "簡要說明" in prompt:
         core = "；".join(picks[:2])
-        ans = f"簡述：{core}"
-    elif "主要在講什麼" in prompt:
+        ans = core
+    elif "主要在講什麼" in prompt or "核心結論" in prompt:
         core = "；".join(picks[:2])
-        ans = f"主題是：{core}"
+        ans = core
+    elif "可執行的建議" in prompt:
+        lines = []
+        for i, p in enumerate(picks[:3], 1):
+            lines.append(f"- {p}")
+        ans = "\n".join(lines)
     else:
         ans = "；".join(picks[:2])
 
@@ -82,6 +88,40 @@ def looks_like_label_leak(user_text: str, assistant_text: str) -> bool:
     if assistant_text in user_text and len(assistant_text) > 60:
         return True
     return char_overlap_ratio(ctx, assistant_text) > 0.9 and len(assistant_text) > 120
+
+
+def remove_style_prefix(text: str) -> str:
+    if not text:
+        return text
+    return re.sub(r"^(重點整理|簡述|主題是|总结|總結)\s*[:：]\s*", "", text).strip()
+
+
+def diversify_answer_style(user_text: str, assistant_text: str) -> str:
+    """
+    Keep deterministic style diversification by hashing sample content.
+    """
+    if not assistant_text:
+        return assistant_text
+    seed = int(hashlib.md5((user_text + "\n" + assistant_text).encode("utf-8")).hexdigest()[:8], 16)
+    mode = seed % 5
+    if mode == 0:
+        return assistant_text
+    if mode == 1:
+        return "；".join([s for s in split_sentences(assistant_text)[:2]]) or assistant_text
+    if mode == 2:
+        sents = split_sentences(assistant_text)[:3]
+        if not sents:
+            return assistant_text
+        return "\n".join([f"- {s}" for s in sents])
+    if mode == 3:
+        sents = split_sentences(assistant_text)
+        if len(sents) >= 2:
+            return f"{sents[0]}。因此，{sents[1]}。"
+        return assistant_text
+    sents = split_sentences(assistant_text)
+    if sents:
+        return sents[0]
+    return assistant_text
 
 
 def main() -> None:
@@ -133,6 +173,10 @@ def main() -> None:
                     if assistant_new and assistant_new != assistant:
                         assistant = assistant_new
                         rewritten += 1
+
+                assistant = remove_style_prefix(assistant)
+                assistant = diversify_answer_style(user, assistant)
+                assistant = normalize_space(assistant)
 
                 if len(assistant) < args.min_answer_chars:
                     dropped_short += 1
